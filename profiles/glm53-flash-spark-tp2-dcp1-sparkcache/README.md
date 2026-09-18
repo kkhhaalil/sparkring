@@ -1,6 +1,6 @@
 # GLM-5.3-Flash on two Sparks
 
-Run the [NVFP4-Spark checkpoint](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark/tree/ec0c3ce05787aa471121235af483b098f11d3570)
+Run the [NVFP4-Spark checkpoint](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark/tree/a608241037e4c2565356bff7ca293f2133888f88)
 on two GB10 Sparks with MTP3 and DCP1. Context defaults to 1M tokens.
 SparkCache is optional. These commands select the published **R37** image with
 SparkCache enabled and 7.5 GiB KV per rank. Status: **Experimental**. R37 TP2
@@ -30,7 +30,7 @@ On both Sparks:
 ```bash
 IMAGE_REF='ghcr.io/fujitsupolycom/sparkring@sha256:f5a7e01c6112c8ef85a51b24bfacfd3934ee9cfff06b7e8c72abcf5d90b50270'
 RELEASE=lil-r37-glm-spark
-MODEL_DIR=/srv/models/GLM-5.3-Flash-NVFP4-Spark/ec0c3ce
+MODEL_DIR=/srv/models/GLM-5.3-Flash-NVFP4-Spark/a608241
 CACHE_DIR=/srv/cache/glm53-r37-tp2
 
 docker pull --platform linux/arm64 "$IMAGE_REF"
@@ -47,7 +47,7 @@ python3 runtime/common/candidate.py --composition "$RELEASE" \
 SPARKRING_RECEIPT="$RECORD/image.json"
 
 hf download local-inference-lab/GLM-5.3-Flash-NVFP4-Spark \
-  --revision ec0c3ce05787aa471121235af483b098f11d3570 \
+  --revision a608241037e4c2565356bff7ca293f2133888f88 \
   --local-dir "$MODEL_DIR"
 mkdir -p "$CACHE_DIR"
 ```

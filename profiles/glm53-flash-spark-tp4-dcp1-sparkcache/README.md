@@ -5,7 +5,7 @@ below. It creates stopped containers and retains managed startup/recovery.
 Configuration equivalence is tested; GLM serving through this backend still
 requires hardware acceptance.
 
-Run [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark/tree/ec0c3ce05787aa471121235af483b098f11d3570)
+Run [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark/tree/a608241037e4c2565356bff7ca293f2133888f88)
 with MTP3 on a four-Spark ring. **DCP1 is the default; DCP4 is an alternative.**
 Context defaults to 1M tokens. SparkCache is optional. The primary procedure
 selects the published **R37 ARM64** image. Status: **Experimental**; bounded
@@ -71,7 +71,7 @@ release identities and evidence instead of being rewritten as R37 qualification.
 ## 3. Discover and plan DCP1
 
 The R37 deployment stages NVFP4-Spark revision
-[`ec0c3ce05787aa471121235af483b098f11d3570`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark/tree/ec0c3ce05787aa471121235af483b098f11d3570)
+[`a608241037e4c2565356bff7ca293f2133888f88`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark/tree/a608241037e4c2565356bff7ca293f2133888f88)
 from the [model pins](../glm53-target-variants.json). Its weights match the
 recorded `df116c4` checkpoint; the chat template and generation defaults differ.
 Download paths and SparkCache identities use the selected revision. Historical

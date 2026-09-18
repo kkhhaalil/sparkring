@@ -203,6 +203,46 @@ def test_rank_plan_maps_both_pci_functions_of_one_qsfp_cage(inputs, rank):
     }
 
 
+@pytest.mark.parametrize("rank", [0, 1])
+def test_site_hca_and_gid_override_preserves_private_order(inputs, rank):
+    inputs[2].write_text(
+        "VLLM_HOST_IP=rank.example\n"
+        "NCCL_SOCKET_IFNAME=enp1s0f1np1\n"
+        "GLOO_SOCKET_IFNAME=enp1s0f1np1\n"
+        "NCCL_IB_HCA==rocep1s0f1,roceP2p1s0f1\n"
+        "NCCL_IB_GID_INDEX=3\n"
+    )
+
+    environment = plan(inputs, rank)["environment"]
+
+    assert environment["B12X_ROCE_HCA"] == "rocep1s0f1,roceP2p1s0f1"
+    assert environment["NCCL_IB_HCA"] == "=rocep1s0f1,roceP2p1s0f1"
+    assert environment["NCCL_IB_GID_INDEX"] == "3"
+
+
+@pytest.mark.parametrize(
+    "fabric",
+    [
+        "NCCL_IB_HCA=rocep1s0f1,roceP2p1s0f1\nNCCL_IB_GID_INDEX=3\n",
+        "NCCL_IB_HCA==rocep1s0f1\nNCCL_IB_GID_INDEX=3\n",
+        "NCCL_IB_HCA==rocep1s0f1,rocep1s0f1\nNCCL_IB_GID_INDEX=3\n",
+        "NCCL_IB_HCA==rocep1s0f1,roceP2p1s0f1\nNCCL_IB_GID_INDEX=three\n",
+        "NCCL_IB_HCA==rocep1s0f1,roceP2p1s0f1\n",
+        "NCCL_IB_GID_INDEX=3\n",
+    ],
+)
+def test_site_rejects_malformed_hca_or_gid_override(inputs, fabric):
+    inputs[2].write_text(
+        "VLLM_HOST_IP=rank.example\n"
+        "NCCL_SOCKET_IFNAME=enp1s0f1np1\n"
+        "GLOO_SOCKET_IFNAME=enp1s0f1np1\n"
+        + fabric
+    )
+
+    with pytest.raises(ValueError, match="NCCL_IB"):
+        plan(inputs)
+
+
 def test_jit_cache_paths_match_the_mount_and_separate_ranks(inputs):
     ranks = [plan(inputs, rank) for rank in (0, 1)]
     for value in ranks:
@@ -443,6 +483,35 @@ def test_r33_receipt_adapts_final_tp2_docker_command(inputs, rank):
     assert host.commands[-1] == value["command"]
     launch.execute(value, "start", runtime, run=host.run)
     assert host.commands[-1] == ["docker", "start", value["name"]]
+
+
+def test_r33_current_model_generation_uses_canonical_port(inputs):
+    current_revision = "a608241037e4c2565356bff7ca293f2133888f88"
+    value = launch.render(
+        0,
+        "master.example",
+        *inputs,
+        LOCAL_IMAGE,
+        r33_receipt(),
+        r33_sparkcache=True,
+        port=8888,
+        target_model_revision=current_revision,
+        deployment_generation="port8888-a6082410",
+    )
+    arguments = value["container_args"]
+    command = value["command"]
+
+    assert arguments[arguments.index("--port") + 1] == "8888"
+    assert "org.sparkring.generation=port8888-a6082410" in [
+        command[index + 1]
+        for index, item in enumerate(command[:-1])
+        if item == "--label"
+    ]
+    assert arguments[arguments.index("--served-model-name") + 1] == "GLM-5.3-Flash-NVFP4-Spark"
+    assert arguments[arguments.index("--tensor-parallel-size") + 1] == "2"
+    assert arguments[arguments.index("--decode-context-parallel-size") + 1] == "1"
+    assert value["sparkcache_enabled"] is True
+    assert value["model"]["revision"] == current_revision
 
 
 def test_legacy_tp2_plan_keeps_its_pinned_preload(inputs):

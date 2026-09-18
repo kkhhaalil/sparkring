@@ -17,7 +17,7 @@ from runtime.common.environment import read_assignments  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1] / "profiles/glm53-flash-spark-tp2"
 PROFILE_PATH = ROOT / "profile.json"
-SITE_KEYS = {"VLLM_HOST_IP", "NCCL_SOCKET_IFNAME", "GLOO_SOCKET_IFNAME"}
+SITE_KEYS = {"VLLM_HOST_IP", "NCCL_SOCKET_IFNAME", "GLOO_SOCKET_IFNAME", "NCCL_IB_HCA", "NCCL_IB_GID_INDEX"}
 REGISTRY_IMAGE_PATTERN = r"ghcr\.io/fujitsupolycom/sparkring@sha256:[0-9a-f]{64}"
 LOCAL_IMAGE_PATTERN = r"sha256:[0-9a-f]{64}"
 SOURCE_IMAGE_ROOT = ROOT.parents[1] / "sparkring/source_image"
@@ -28,7 +28,7 @@ def load_profile():
     return json.loads(PROFILE_PATH.read_text())
 
 
-def transport_environment(rank: int) -> dict[str, str]:
+def transport_environment(rank: int, site: dict[str, str] | None = None) -> dict[str, str]:
     """Use both PCI domains of physical cage p0, with reciprocal rank maps."""
     if rank not in (0, 1):
         raise ValueError("rank must be 0 or 1")
@@ -41,6 +41,8 @@ def transport_environment(rank: int) -> dict[str, str]:
     # The proxy requires every listed device to be active. Peer indices refer
     # to this selected list, not to uncabled functions in the host inventory.
     selected = [inventory[index] for index in indices]
+    if site and "NCCL_IB_HCA" in site:
+        selected = site["NCCL_IB_HCA"].removeprefix("=").split(",")
     return {
         "B12X_ROCE_HCA": ",".join(selected),
         "B12X_ROCE_PAIR_PATHS": str(transport["path_count"]),
@@ -59,7 +61,23 @@ def transport_environment(rank: int) -> dict[str, str]:
 
 
 def read_site(path: Path) -> dict[str, str]:
-    result = read_assignments(path, SITE_KEYS)
+    optional = {"NCCL_IB_HCA", "NCCL_IB_GID_INDEX"}
+    present = {
+        line.partition("=")[0]
+        for line in path.read_text(encoding="utf-8-sig").splitlines()
+        if line.partition("=")[0] in optional
+    }
+    result = read_assignments(path, SITE_KEYS - optional | present)
+    if bool(result.get("NCCL_IB_HCA")) != bool(result.get("NCCL_IB_GID_INDEX")):
+        raise ValueError("NCCL_IB_HCA and NCCL_IB_GID_INDEX must be overridden together")
+    if "NCCL_IB_HCA" in result:
+        selector = result["NCCL_IB_HCA"]
+        hcas = selector.removeprefix("=").split(",")
+        if (not selector.startswith("=") or len(hcas) != 2 or len(set(hcas)) != 2
+                or any(not re.fullmatch(r"[A-Za-z0-9_.-]+", hca) for hca in hcas)):
+            raise ValueError("NCCL_IB_HCA must select two unique ordered HCA device names exactly")
+        if not result["NCCL_IB_GID_INDEX"].isdigit():
+            raise ValueError("NCCL_IB_GID_INDEX must be an operator-verified nonnegative index")
     return result
 
 def _r33_verifier():
@@ -82,7 +100,8 @@ def _remove_option(arguments, flag):
     return result
 
 
-def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes=None):
+def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes=None,
+                       port=None, target_model_revision=None, deployment_generation=None):
     verifier = _r33_verifier()
     from runtime.common import candidate, glm_targets, r35, glm_source_candidate
     is_source = receipt.get("schema") == glm_source_candidate.SCHEMA
@@ -99,6 +118,11 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
         raise ValueError(release.upper()+" receipt does not identify the selected TP2 image")
     contract = glm_source_candidate.contract_for_receipt(receipt) if is_source else adapter.profile_contract(receipt['installed']) if is_r35 else verifier.load_contract()
     target = glm_targets.target_for_image(image=receipt)
+    if target_model_revision is not None:
+        maintained_target = glm_targets.target()
+        if target_model_revision != maintained_target["revision"]:
+            raise ValueError("Target model revision must match the maintained immutable pin")
+        target = maintained_target
     profile_name = "tp2-dcp1-sparkcache" if sparkcache else "tp2-dcp1"
     if is_source:
         adapter.validate_profile_capabilities(receipt, profile_name)
@@ -116,6 +140,8 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
         "VLLM_SPARK_TP4_VOCAB_MODE": "",
     })
     arguments = plan["container_args"][4:]
+    if port is not None:
+        arguments = _replace_option(arguments, "--port", str(port))
     arguments = _replace_option(arguments, "--max-model-len", str(contract["model"]["max_model_len"]))
     kv_memory_bytes = selected["kv_cache_memory_bytes"] if cache_kv_memory_bytes is None else cache_kv_memory_bytes
     arguments = _replace_option(arguments, "--kv-cache-memory-bytes", str(kv_memory_bytes))
@@ -177,12 +203,15 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
         arguments = _remove_option(arguments, '--gdn-decode-kernel')
     container_args = ([glm_source_candidate.ENTRYPOINT if is_source else candidate.ENTRYPOINT if is_candidate else "/opt/sparkring/bin/sparkring"] if is_r35 else []) + ["serve", *arguments]
     command = list(plan["command"])
-    name = f"sparkring-{release}-{profile_name}-r{environment['NODE_RANK']}"
+    generation_suffix = "-" + deployment_generation if deployment_generation else ""
+    name = f"sparkring-{release}-{profile_name}{generation_suffix}-r{environment['NODE_RANK']}"
     command[command.index("--name") + 1] = name
     entrypoint = '/opt/venv/bin/python' if is_r35 else '/opt/sparkring/bin/sparkring-r33'
     command[command.index("--entrypoint") + 1] = entrypoint
     labels = dict(plan["labels"])
     labels["org.sparkring.profile"] = profile_name
+    if deployment_generation:
+        labels["org.sparkring.generation"] = deployment_generation
     image_index = len(command) - len(plan["container_args"]) - 1
     prefix = command[:image_index]
     for key, value in sorted(environment.items()):
@@ -198,6 +227,8 @@ def adapt_release_plan(plan, receipt, *, sparkcache=False, cache_kv_memory_bytes
             if prefix[index] == "--label" and prefix[index + 1].startswith(assignment):
                 prefix[index + 1] = assignment + value
                 break
+        else:
+            prefix.extend(["--label", assignment + value])
     healthcheck = {'Test': ['NONE']}
     if is_r35 and environment['NODE_RANK'] == '0':
         prefix.remove('--no-healthcheck')
@@ -235,13 +266,20 @@ adapt_r33_plan = adapt_release_plan
 
 
 def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None, *, r33_sparkcache=False,
-           r33_cache_kv_memory_bytes=None):
+           r33_cache_kv_memory_bytes=None, port=None, target_model_revision=None,
+           deployment_generation=None):
     if r33_cache_kv_memory_bytes is not None and (
             not r33_sparkcache or type(r33_cache_kv_memory_bytes) is not int
             or r33_cache_kv_memory_bytes not in (7247757312, 8053063680, 9395240960)):
         raise ValueError("R33 cache KV override requires --r33-sparkcache and an explicit 6.75, 7.5 or 8.75 GiB pin")
     if r33_sparkcache and r33_receipt is None:
         raise ValueError("R33 SparkCache requires an exact R33 image receipt")
+    if port is not None and (type(port) is not int or not 1 <= port <= 65535):
+        raise ValueError("Port must be an integer from 1 through 65535")
+    if target_model_revision is not None and r33_receipt is None:
+        raise ValueError("A target model revision requires an exact release image receipt")
+    if deployment_generation is not None and not re.fullmatch(r"[a-z0-9][a-z0-9.-]*", deployment_generation):
+        raise ValueError("Deployment generation must be a lowercase immutable identifier")
     if rank not in (0, 1) or not re.fullmatch(r"[A-Za-z0-9_.:-]+", master):
         raise ValueError("A valid rank and master address are required")
     if not (re.fullmatch(REGISTRY_IMAGE_PATTERN, image) or re.fullmatch(LOCAL_IMAGE_PATTERN, image)):
@@ -255,7 +293,8 @@ def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None
         raise ValueError("Checkpoint and writable cache directories must be distinct")
     profile = load_profile()
     profile_hash = hashlib.sha256(PROFILE_PATH.read_bytes()).hexdigest()
-    environment = {**profile["environment"], **read_site(env_file), **transport_environment(rank)}
+    site = read_site(env_file)
+    environment = {**profile["environment"], **site, **transport_environment(rank, site)}
     environment.update(NODE_RANK=str(rank), SPARKRING_NODE_RANK=str(rank),
                        MASTER_ADDR=master, SOURCE_IMAGE_PROFILE=profile["name"])
     # Keep compilation artifacts in the mounted tree and separate ranks and
@@ -321,8 +360,12 @@ def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None
         "qualification": profile["qualification"],
         "entrypoint": "python3", "runtime_kind": "legacy",
     }
-    return adapt_release_plan(result, r33_receipt, sparkcache=r33_sparkcache,
-                          cache_kv_memory_bytes=r33_cache_kv_memory_bytes) if r33_receipt is not None else result
+    return adapt_release_plan(
+        result, r33_receipt, sparkcache=r33_sparkcache,
+        cache_kv_memory_bytes=r33_cache_kv_memory_bytes, port=port,
+        target_model_revision=target_model_revision,
+        deployment_generation=deployment_generation,
+    ) if r33_receipt is not None else result
 
 
 def _source_receipt_contract(directory):
@@ -491,11 +534,16 @@ def main():
     parser.add_argument("--sparkcache", "--r33-sparkcache", dest='r33_sparkcache', action="store_true", help="Plan the source-capability-gated TP2 cache composition")
     parser.add_argument("--r33-cache-kv-memory-bytes", type=int, choices=(7247757312, 8053063680, 9395240960),
                         help="Explicit TP2 R33 cache KV pin; default is the 7.5 GiB research configuration")
+    parser.add_argument("--port", type=int)
+    parser.add_argument("--target-model-revision")
+    parser.add_argument("--deployment-generation")
     args = parser.parse_args()
     runtime_receipt = json.loads(args.runtime_receipt.read_text()) if args.runtime_receipt else None
     r33_receipt = runtime_receipt if runtime_receipt and runtime_receipt.get("schema") in ("sparkring-r33-image-receipt/v1", "sparkring-r35-image-receipt/v1", "sparkring-candidate-image-receipt/v1", "sparkring-glm-source-image-receipt/v1") else None
     plan = render(args.rank, args.master, args.model_dir, args.cache_dir, args.env_file, args.image, r33_receipt,
-                  r33_sparkcache=args.r33_sparkcache, r33_cache_kv_memory_bytes=args.r33_cache_kv_memory_bytes)
+                  r33_sparkcache=args.r33_sparkcache, r33_cache_kv_memory_bytes=args.r33_cache_kv_memory_bytes,
+                  port=args.port, target_model_revision=args.target_model_revision,
+                  deployment_generation=args.deployment_generation)
     print(json.dumps(plan, indent=2), flush=True)
     if args.action == "plan":
         return

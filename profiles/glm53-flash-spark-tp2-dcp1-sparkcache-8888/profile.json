@@ -1,0 +1,33 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "glm53-flash-spark-tp2-dcp1-sparkcache-8888",
+  "title": "GLM-5.3 Flash NVFP4-Spark \u00b7 R33 TP2 SparkCache \u00b7 port 8888",
+  "recommendation": "alternative",
+  "status": "research-only",
+  "configuration": {
+    "format": "release-profile",
+    "path": "runtime/sparkring/jovian-r33/profiles/profile-contract.json",
+    "key": "tp2-dcp1-sparkcache"
+  },
+  "release": "runtime/releases/sparkring-r33-dcp4/release.json",
+  "guide": "profiles/glm53-flash-spark-tp2-dcp1-sparkcache-8888/README.md",
+  "evidence_scope": "Immutable private-deployment generation of the published R33 TP2/DCP1 SparkCache composition at API port 8888. The selected a6082410 model revision has the recorded metadata hashes but no transferred R33 hardware qualification.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/tp2.py",
+    "actions": [
+      "plan",
+      "create",
+      "start"
+    ],
+    "fixed_args": [
+      "--r33-sparkcache",
+      "--port=8888",
+      "--target-model-revision=a608241037e4c2565356bff7ca293f2133888f88",
+      "--deployment-generation=port8888-a6082410"
+    ],
+    "receipt": "runtime/sparkring/jovian-r33/public-image-receipt.json"
+  },
+  "quickstart_status": "research-only"
+}

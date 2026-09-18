@@ -230,6 +230,25 @@ def test_plan_does_not_execute_launcher(repository):
         plan('example', ['start'], repository)
 
 
+def test_port8888_generation_is_immutable_and_preserves_published_profile():
+    published, _ = profiles.load("glm53-flash-spark-tp2-dcp1-sparkcache")
+    generated, _ = profiles.load("glm53-flash-spark-tp2-dcp1-sparkcache-8888")
+
+    assert published["launcher"]["fixed_args"] == ["--r33-sparkcache"]
+    assert generated["configuration"] == published["configuration"]
+    assert generated["release"] == published["release"]
+    assert generated["launcher"]["receipt"] == published["launcher"]["receipt"]
+    assert generated["launcher"]["fixed_args"] == [
+        "--r33-sparkcache",
+        "--port=8888",
+        "--target-model-revision=a608241037e4c2565356bff7ca293f2133888f88",
+        "--deployment-generation=port8888-a6082410",
+    ]
+    command = plan("glm53-flash-spark-tp2-dcp1-sparkcache-8888", ["plan"])["command"]
+    assert "--port=8888" in command
+    assert "--target-model-revision=a608241037e4c2565356bff7ca293f2133888f88" in command
+
+
 def test_catalog_pins_r33_receipt_and_cache_selection():
     result = plan('glm53-flash-spark-tp2-dcp1-sparkcache', ['plan'])
     assert '--r33-sparkcache' in result['command']
