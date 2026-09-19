@@ -24,7 +24,7 @@ SELECTION=".sparkring/switchboard/selection-rank${RANK}.json"
 PLAN=".sparkring/switchboard/plans/rank${RANK}.json"
 
 python3 -m runtime.common.launch \
-  glm53-flash-spark-tp2-dcp1-sparkcache-8888 -- plan \
+  glm53-flash-spark-tp2-dcp1-sparkcache -- plan \
   --rank "$RANK" --master "$MASTER" \
   --model-dir "$MODEL_DIR" --cache-dir "$CACHE_DIR" \
   --env-file "$ENV_FILE" --image "$IMAGE" > "$SELECTION"

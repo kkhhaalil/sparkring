@@ -73,13 +73,15 @@ def test_shared_qwen_guide_is_used_for_cache_links_and_variant_navigation():
 
 
 
-def test_glm_discovery_uses_quickstart_status_without_relabelling_r33():
+def test_glm_discovery_uses_quickstart_status_and_preserves_profile_evidence_scope():
     summary = profile_table(compact=True)
     glm = [row for row in summary.splitlines() if row.startswith("| **[GLM-5.3-Flash](")]
     assert len(glm) == 2
     assert all(row.endswith("| Experimental |") for row in glm)
-    for profile_id in ("glm53-flash-spark-tp2-dcp1-sparkcache", "glm53-flash-spark-tp4-dcp1-sparkcache"):
-        resolved = resolve(profile_id)
-        assert resolved["status"] == "qualified"
+    tp2 = resolve("glm53-flash-spark-tp2-dcp1-sparkcache")
+    tp4 = resolve("glm53-flash-spark-tp4-dcp1-sparkcache")
+    assert tp2["status"] == "research-only"
+    assert tp4["status"] == "qualified"
+    for resolved in (tp2, tp4):
         assert resolved["quickstart_status"] == "research-only"
         assert resolved["release"]["id"] == "sparkring-r33-dcp4"

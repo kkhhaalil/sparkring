@@ -1,9 +1,9 @@
 {
   "schema": "sparkring-deployment/v1",
   "id": "glm53-flash-spark-tp2-dcp1-sparkcache",
-  "title": "GLM-5.3 Flash NVFP4-Spark \u00b7 MTP3 + SparkCache",
+  "title": "GLM-5.3 Flash NVFP4-Spark · R33 TP2 SparkCache · port 8888",
   "recommendation": "recommended",
-  "status": "qualified",
+  "status": "research-only",
   "configuration": {
     "format": "release-profile",
     "path": "runtime/sparkring/jovian-r33/profiles/profile-contract.json",
@@ -11,7 +11,7 @@
   },
   "release": "runtime/releases/sparkring-r33-dcp4/release.json",
   "guide": "profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md",
-  "evidence_scope": "Bounded functional checks for the exact published image, model and topology only. Throughput observations lack a complete public methodology; full-context and arbitrary concurrency are not qualified.",
+  "evidence_scope": "Locally boot-validated R33 TP2/DCP1 SparkCache deployment at API port 8888 using model revision a6082410. The model metadata is pinned, but historical R33 hardware qualification does not transfer to this checkpoint generation.",
   "overrides": [],
   "launcher": {
     "kind": "python",
@@ -22,7 +22,10 @@
       "start"
     ],
     "fixed_args": [
-      "--r33-sparkcache"
+      "--r33-sparkcache",
+      "--port=8888",
+      "--target-model-revision=a608241037e4c2565356bff7ca293f2133888f88",
+      "--deployment-generation=port8888-a6082410"
     ],
     "receipt": "runtime/sparkring/jovian-r33/public-image-receipt.json"
   },

@@ -230,23 +230,21 @@ def test_plan_does_not_execute_launcher(repository):
         plan('example', ['start'], repository)
 
 
-def test_port8888_generation_is_immutable_and_preserves_published_profile():
-    published, _ = profiles.load("glm53-flash-spark-tp2-dcp1-sparkcache")
-    generated, _ = profiles.load("glm53-flash-spark-tp2-dcp1-sparkcache-8888")
+def test_canonical_port8888_generation_owns_current_cluster_defaults():
+    profile, _ = profiles.load("glm53-flash-spark-tp2-dcp1-sparkcache")
 
-    assert published["launcher"]["fixed_args"] == ["--r33-sparkcache"]
-    assert generated["configuration"] == published["configuration"]
-    assert generated["release"] == published["release"]
-    assert generated["launcher"]["receipt"] == published["launcher"]["receipt"]
-    assert generated["launcher"]["fixed_args"] == [
+    assert profile["status"] == "research-only"
+    assert profile["quickstart_status"] == "research-only"
+    assert profile["launcher"]["fixed_args"] == [
         "--r33-sparkcache",
         "--port=8888",
         "--target-model-revision=a608241037e4c2565356bff7ca293f2133888f88",
         "--deployment-generation=port8888-a6082410",
     ]
-    command = plan("glm53-flash-spark-tp2-dcp1-sparkcache-8888", ["plan"])["command"]
+    command = plan("glm53-flash-spark-tp2-dcp1-sparkcache", ["plan"])["command"]
     assert "--port=8888" in command
     assert "--target-model-revision=a608241037e4c2565356bff7ca293f2133888f88" in command
+    assert not (profiles.ROOT / "profiles/glm53-flash-spark-tp2-dcp1-sparkcache-8888").exists()
 
 
 def test_catalog_pins_r33_receipt_and_cache_selection():
@@ -275,9 +273,9 @@ def test_kv_override_reports_effective_configuration(flag, equals):
     assert result['serving']['sparkcache']
 
 
-def test_explicit_catalog_kv_default_preserves_status():
+def test_explicit_catalog_kv_default_preserves_research_status():
     result = plan('glm53-flash-spark-tp2-dcp1-sparkcache', ['plan', '--r33-cache-kv-memory-bytes=8053063680'])
-    assert result['configuration_status'] == 'qualified'
+    assert result['configuration_status'] == 'research-only'
     assert not result['modified_defaults']
 
 
