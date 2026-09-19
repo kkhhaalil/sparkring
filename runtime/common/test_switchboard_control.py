@@ -6,9 +6,8 @@ from types import SimpleNamespace
 import pytest
 
 
-ROOT = Path(__file__).resolve().parents[0]
-REMOTE_ROOT = Path("/home/khalil/sparkring-glm53f-tp2")
-CONTROL_PATH = REMOTE_ROOT / ".sparkring/switchboard/control.py"
+ROOT = Path(__file__).resolve().parents[2]
+CONTROL_PATH = ROOT / ".sparkring/switchboard/control.py"
 
 
 def load_control():
